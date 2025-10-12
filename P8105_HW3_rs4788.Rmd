@@ -1,0 +1,116 @@
+---
+title: "P8105_HW3_rs4788"
+output: html_document
+date: "2025-10-12"
+---
+
+```{r setup}
+library(tidyverse)
+library(viridis) 
+library(tidyr)
+```
+
+# Problem 1
+
+### First load the data:
+
+```{r}
+library(p8105.datasets)
+data("instacart")
+glimpse(instacart)
+```
+
+### Take a look at the data:
+```{r}
+instacart_summary =
+  instacart %>%
+  summarise(
+    n_obs = n(),
+    n_vars = ncol(.),
+    n_users = n_distinct(user_id),
+    n_orders = n_distinct(order_id),
+    n_products = n_distinct(product_id),
+    n_aisles = n_distinct(aisle),
+    n_departments = n_distinct(department)
+  )
+
+instacart_summary
+```
+This dataset records orders and products information from the Instacart platform, describing items within specific orders. It contains 1,384,617 observations across 15 variables, covering 131,209 users and 131,209 orders. The dataset includes 39,123 distinct products distributed across 134 aisles and 21 departments.
+
+
+
+### Let's make more detailed description:
+#### aisles_items:
+```{r}
+aisle_counts =
+  instacart %>%
+  count(aisle, name = "n_items") %>%
+  arrange(desc(n_items))
+aisle_counts
+```
+There are 134 aisles. In terms of order times, fresh vegetables and fresh fruits are much higher than other aisles, with packaged vegetables and fruits ranking third. This demonstrates the high demand for fruits and vegetables, which are essential daily necessities.
+
+
+#### Plot for aisle & items_number:
+```{r}
+aisle_plot_data =
+  aisle_counts %>%
+  filter(n_items > 10000) %>%
+  mutate(aisle = forcats::fct_reorder(aisle, n_items))
+
+aisle_plot =
+  ggplot(aisle_plot_data, aes(x = aisle, y = n_items)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Number of items ordered by aisle (> 10,000 only)",
+    x = "Aisle",
+    y = "Number of items") +
+  theme_minimal()
+aisle_plot
+```
+
+#### Popular items in some aisles:
+
+```{r}
+target_aisles = c("baking ingredients", "dog food care", "packaged vegetables fruits")
+
+most_popular =
+  instacart %>%
+  filter(aisle %in% target_aisles) %>%
+  group_by(aisle, product_name) %>%
+  summarise(n = n(), .groups = "drop_last") %>%
+  arrange(desc(n)) %>%
+  group_by(aisle) %>%
+  slice_max(order_by = n, n = 3, with_ties = FALSE) %>%
+  mutate(rank = row_number()) %>%  
+  ungroup() %>%
+  pivot_wider(
+    id_cols   = aisle,
+    names_from  = rank,
+    values_from = c(product_name, n))
+
+most_popular
+```
+
+
+#### Mean order hour during a week:
+
+```{r}
+dow_labs = c("Sun","Mon","Tue","Wed","Thu","Fri","Sat")
+
+mean_hour_day=
+  instacart %>%
+  filter(product_name %in% c("Pink Lady Apples", "Coffee Ice Cream")) %>%
+  mutate(order_dow = factor(order_dow, levels = 0:6, labels = dow_labs)) %>%
+  group_by(product_name, order_dow) %>%
+  summarise(mean_hour = mean(order_hour_of_day), .groups = "drop") %>%
+  pivot_wider(
+    names_from = order_dow, 
+    values_from = mean_hour
+  )
+
+mean_hour_day %>%
+  knitr::kable(digits = 1, caption = "Mean order hour on each day of the week")
+```
