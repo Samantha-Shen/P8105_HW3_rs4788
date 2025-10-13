@@ -444,8 +444,3 @@ day_activ_plot
 ```
 
 The daily activity level trajectory shows that MMS is lowest in the early morning, gradually rising from around 6 to 7 a.m., peaking at noon, and remaining high throughout the afternoon before declining significantly around 8 to 10 p.m. This daily activity pattern is consistent with human circadian rhythms. The shape of the curve is similar across different educational levels. Women's curves are generally slightly higher than men's during daytime hours.
-
-
-
-
-
