@@ -8,6 +8,9 @@ date: "2025-10-12"
 library(tidyverse)
 library(viridis) 
 library(tidyr)
+library(janitor)
+library(patchwork)
+library(ggplot2)
 ```
 
 # Problem 1
@@ -91,7 +94,8 @@ most_popular =
     names_from  = rank,
     values_from = c(product_name, n))
 
-most_popular
+most_popular %>%
+  knitr::kable(caption = "The three most popular items in the aisles")
 ```
 
 
@@ -114,3 +118,197 @@ mean_hour_day=
 mean_hour_day %>%
   knitr::kable(digits = 1, caption = "Mean order hour on each day of the week")
 ```
+
+
+
+# Problem 2
+
+### Import, clean, and tidy data:
+```{r}
+zip_code =
+  read_csv("./zillow_data/Zip Codes.csv") %>%
+  janitor::clean_names()
+
+zip_zori =
+  read_csv("./zillow_data/Zip_zori_uc_sfrcondomfr_sm_month_NYC.csv") %>%
+  janitor::clean_names() %>%
+  mutate(region_name = as.character(region_name))
+```
+
+```{r}
+zori_long =
+  zip_zori %>%
+  rename(zip_code = region_name) %>%        
+  pivot_longer(
+    cols = matches("^x?\\d{4}[_-]\\d{2}([_-]\\d{2})?$"), 
+    names_to  = "date_raw",
+    values_to = "rent"
+  ) %>%
+  mutate(
+    date_raw = as.character(date_raw),
+    date_raw = str_remove(date_raw, "^x"),
+    date_raw = str_replace_all(date_raw, "_", "-"),
+    date_raw = if_else(str_detect(date_raw, "^\\d{4}-\\d{2}$"),
+                       paste0(date_raw, "-01"), date_raw),
+    date = ymd(date_raw)
+  ) %>%
+  select(zip_code, date, rent) %>%
+  drop_na(rent)
+```
+
+```{r}
+zip_borough =
+  zip_code %>%
+  transmute(
+    zip_code = as.character(zip_code),
+    county   = str_to_lower(county) |> 
+               str_trim() |>
+               str_replace("\\s+county$", "")) %>%
+  mutate(
+    borough = case_when(
+      county == "new york"  ~ "Manhattan",
+      county == "kings"      ~ "Brooklyn",
+      county == "queens"     ~ "Queens",
+      county == "bronx"      ~ "The Bronx",
+      county == "richmond"   ~ "Staten Island",
+      TRUE ~ NA_character_
+    )) %>%
+  select(zip_code, borough)
+```
+
+```{r}
+zori <-
+  zori_long %>%
+  left_join(zip_borough, by = "zip_code",relationship = "many-to-many") %>%
+  drop_na(borough)
+zori
+```
+
+
+### Answer some questions:
+
+#### Zip code count:
+```{r}
+zip_count =
+  zori_long %>%
+  filter(date >= ymd("2015-01-01"), date <= ymd("2024-08-31")) %>%  
+  group_by(zip_code) %>%
+  summarise(n_months = n_distinct(date), .groups = "drop") %>%
+  summarise(zips_116 = sum(n_months == 116),
+            zips_lt10 = sum(n_months < 10))
+zip_count
+```
+Between January 2015 and August 2024, 48 ZIP codes are observed 116 times, while 26 ZIP codes are observed fewer than 10 times. This is because 
+Rarely observed ZIPs are typically boundary or newly created/retired ZIP codes, areas with very sparse listings, so they don’t receive a ZORI every month. However, well-covered ZIPs have consistent monthly data across the whole window.
+
+#### Average rental price in brough and year:
+
+```{r}
+avg_price <-
+  zori %>%
+  group_by(borough, year = year(date)) %>%
+  summarise(avg_rent = mean(rent, na.rm = TRUE), .groups = "drop") %>%
+  mutate(borough = fct_relevel(borough, "Manhattan","Brooklyn","Queens","The Bronx","Staten Island")) %>%
+  arrange(borough, year) %>%
+  pivot_wider(names_from = year, values_from = avg_rent) %>%
+  knitr::kable(digits = 0, caption = "Average rental price in each borough and year")
+
+avg_price
+```
+Looking at the annual average rent data, according to brought, the rent in Manhattan has been the highest over the years, followed by Brooklyn, Queens, and The Bronx and Staten Island have the lowest rents. From the timeline perspective, the rent in New York continued to rise from 2015 to 2019. It then entered a stagnation period or even slightly declined in 2020 and 2021. However, it rebounded in 2022 and has been continuously rising ever since.
+
+
+#### Plot for rental price within ZIP code：
+```{r}
+zip_year =
+  zori %>%
+  group_by(borough, zip_code, year = year(date)) %>%
+  summarise(rent_year_zip = mean(rent, na.rm = TRUE), .groups = "drop")
+
+borough_year =
+  zip_year %>%
+  group_by(borough, year) %>%
+  summarise(mean_rent = mean(rent_year_zip), .groups = "drop")
+
+price_zip_plot =
+  ggplot(zip_year, aes(x = factor(year), y = rent_year_zip)) +
+  geom_boxplot() +
+  geom_line(
+    data = borough_year,
+    aes(y = mean_rent, group = 1),
+    linewidth = 0.8, color = "steelblue") +
+  geom_jitter(width = 0.25, height = 0, alpha = 0.25, size = 0.6) +
+  facet_grid(borough ~ ., scales = "free_y") +  
+  labs(title = "NYC Rental Prices within ZIP codes for years", x= "Year", y = "Rent Price within Zip") +
+  theme(panel.spacing.y = unit(1.2, "lines")) 
+
+price_zip_plot
+
+ggsave("results/price_zip_year plot.png", price_zip_plot,
+       width = 8, height = 12, units = "in", dpi = 300, bg = "white")
+```
+Rental prices vary across boroughs, with annual rental changes consistent with the findings from the previous question. Additionally, rental prices in Brooklyn and Manhattan exhibit a broader distribution within zip codes.
+
+
+#### Plot for rental price in 2023：
+
+```{r}
+rent_2023 =
+  zori %>%
+  filter(year(date) == 2023) %>%
+  mutate(mon_num = month(date),
+         mon_f   = factor(mon_num, levels = 1:12, labels = 1:12)) %>%
+  group_by(borough, zip_code, mon_f) %>%
+  summarise(avg_rent = mean(rent, na.rm = TRUE), .groups = "drop")
+
+
+borough_month =
+  rent_2023 %>%
+  group_by(borough, mon_f) %>%
+  summarise(mean_rent = mean(avg_rent), .groups = "drop")
+
+price_zip_2023 =
+  ggplot(rent_2023, aes(x = mon_f, y = avg_rent)) +
+  geom_boxplot() +
+  geom_line(data = borough_month,
+            aes(y = mean_rent, group = 1),
+            linewidth = 0.8, color = "steelblue") +
+  geom_jitter(width = 0.25, height = 0, alpha = 0.25, size = 0.6) +
+  facet_grid(borough ~ ., scales = "free_y") +
+  labs(title = "Average monthly rents within ZIP codes in 2023",
+       x = "Month", y = "Rent Price within Zip") +
+  theme(panel.spacing.y = unit(1.2, "lines"))
+
+price_zip_2023
+
+ggsave("results/price_zip_2023 plot.png", price_zip_2023,
+       width = 8, height = 12, units = "in", dpi = 300, bg = "white")
+```
+In terms of monthly rent, Manhattan remains the most expensive, followed by Brooklyn and Queens, while Staten Island and The Bronx have the lowest rates. Manhattan and Brooklyn exhibit taller boxes and longer tails, indicating greater rental variation between ZIP codes. Overall monthly rental trends show increases across all boroughs from July to September, likely due to the summer peak for international student renting and the tourist season. Rents typically decline back to lower levels after September.
+
+
+#### Combine the plots:
+
+```{r}
+left  = price_zip_plot  +
+  labs(subtitle = "2015–2024 by year", y = "Average rent price")
+
+right = price_zip_2023  +
+  labs(subtitle = "Year 2023 by month", y = "Average rent price")
+
+combined_plot =
+  (left | right) +
+  plot_layout(widths = c(1, 1)) +
+  plot_annotation(
+    title = "NYC Rental Prices within ZIP codes",
+    theme = theme(plot.title = element_text(hjust = 0.5, face = "bold"))
+  )
+
+combined_plot
+
+ggsave("results/nyc rents sum plot.png", combined_plot,
+       width = 16, height = 12, units = "in", dpi = 300, bg = "white")
+```
+
+
+
