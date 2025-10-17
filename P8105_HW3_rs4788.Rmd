@@ -1,6 +1,6 @@
 ---
 title: "P8105_HW3_rs4788"
-output: html_document
+output: github_document
 author: Ruhui Shen
 date: "2025-10-12"
 ---
@@ -53,6 +53,9 @@ aisle_counts =
   count(aisle, name = "n_items") %>%
   arrange(desc(n_items))
 aisle_counts
+
+num_aisle = n_distinct(aisle_counts$aisle)
+print(num_aisle)
 ```
 There are 134 aisles. In terms of order times, fresh vegetables and fresh fruits are much higher than other aisles, with packaged vegetables and fruits ranking third. This demonstrates the high demand for fruits and vegetables, which are essential daily necessities.
 
@@ -131,11 +134,11 @@ mean_hour_day %>%
 ### Import, clean, and tidy data:
 ```{r}
 zip_code =
-  read_csv("./zillow_data/Zip Codes.csv") %>%
+  read_csv("./data/zillow_data/Zip Codes.csv") %>%
   janitor::clean_names()
 
 zip_zori =
-  read_csv("./zillow_data/Zip_zori_uc_sfrcondomfr_sm_month_NYC.csv") %>%
+  read_csv("./data/zillow_data/Zip_zori_uc_sfrcondomfr_sm_month_NYC.csv") %>%
   janitor::clean_names() %>%
   mutate(region_name = as.character(region_name))
 ```
@@ -317,11 +320,11 @@ ggsave("results/nyc rents sum plot.png", combined_plot,
 ### Load, tidy, merge, and organize dataset:
 ```{r}
 accel =
-  read_csv("./MIMS/nhanes_accel.csv") %>%
+  read_csv("./data/MIMS/nhanes_accel.csv") %>%
   janitor::clean_names()
 
 covar =
-  read_csv("./MIMS/nhanes_covar.csv", skip = 4, show_col_types = FALSE) %>%
+  read_csv("./data/MIMS/nhanes_covar.csv", skip = 4, show_col_types = FALSE) %>%
   janitor::clean_names()
 
 
@@ -345,6 +348,7 @@ If we need combined dataset:
 combined_data =
   covar_filter %>%
   inner_join(accel, by = "seqn", relationship = "one-to-one")
+combined_data
 ```
 
 ### sex and education category:
